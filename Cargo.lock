@@ -200,6 +200,7 @@ dependencies = [
  "anyhow",
  "base64",
  "flate2",
+ "libc",
  "pointman-extension",
  "serde_json",
  "sha2",

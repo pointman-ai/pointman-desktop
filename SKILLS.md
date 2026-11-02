@@ -57,7 +57,7 @@ open_pane(extension="screen", open="live", machine="mac-m4", target={"app": "Ble
 - **Headless first.** A ref action goes through the accessibility API. It doesn't move the pointer, take focus or
   touch the clipboard, so the person can keep working. `headed: true` is physical input: it moves their pointer and
   types into whatever window has focus. Use it only when the person says you may, and never to recover from a
-  headless failure. A machine's "Physical input" setting can turn it off.
+  headless failure. It works only where the machine's person has turned on "Physical input" (off by default).
 - **Stay in your lane on someone's machine.** Act only in the apps you were asked to use.
   - Don't close or quit apps.
   - Don't dismiss dialogs you didn't open.

@@ -68,7 +68,7 @@ it requires). The node's own `AGENT_DESKTOP_*` variables never reach it.
 
 | Setting | Default | |
 |---|---|---|
-| `headed` | true | "Physical input". It lets agents ask for physical input, which moves the pointer and types into the focused window. Off: only accessibility actions, which leave the pointer and focus alone |
+| `headed` | false | "Physical input". On, it lets agents ask for physical input, which moves the pointer and types into the focused window. Each machine's person turns it on. Off: only accessibility actions, which leave the pointer and focus alone |
 | `cursor` | true | On macOS, draws each agent's own cursor, with its name, where it acts |
 
 ## Health

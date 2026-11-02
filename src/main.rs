@@ -215,7 +215,7 @@ fn run(x: &Ext, job: &Job) -> anyhow::Result<Value> {
         bail!("args is empty: the words after `agent-desktop`, [\"snapshot\", \"--app\", \"Finder\", \"-i\"]");
     }
     let asked_headed = job.params["headed"].as_bool().unwrap_or(false);
-    if (asked_headed || args.iter().any(|a| a == "--headed")) && !x.setting("headed", true) {
+    if (asked_headed || args.iter().any(|a| a == "--headed")) && !x.setting("headed", false) {
         bail!(
             "Physical input is off on {} (the Desktop extension's \"Physical input\" setting): act on refs without \
              headed, or ask this machine's person to turn it on.",
@@ -270,7 +270,7 @@ fn run(x: &Ext, job: &Job) -> anyhow::Result<Value> {
     let mut answer = env;
     let size = answer.to_string().len();
     if size > ANSWER_MAX {
-        let name = format!("{}.json", answer["command"].as_str().unwrap_or("answer"));
+        let name = format!("{}.json", file_stem(answer["command"].as_str().unwrap_or_default()));
         let path = job.work.join(&name);
         std::fs::write(&path, serde_json::to_vec_pretty(&answer)?)?;
         job.output(&path, "document", Role::Main, json!({"file": name}));
@@ -283,6 +283,21 @@ fn run(x: &Ext, job: &Job) -> anyhow::Result<Value> {
     });
     answer["machine"] = Value::String(x.h.machine());
     Ok(answer)
+}
+
+/// A file name made from agent-desktop's `command`: only `[a-z0-9-]`, so it stays in the job's folder.
+fn file_stem(command: &str) -> String {
+    let stem: String = command
+        .chars()
+        .map(|c| c.to_ascii_lowercase())
+        .filter(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || *c == '-')
+        .take(40)
+        .collect();
+    if stem.is_empty() {
+        "answer".into()
+    } else {
+        stem
+    }
 }
 
 /// desktop.status: the version, the platform and what this machine lets it do.
@@ -411,9 +426,40 @@ fn health(x: &Ext) -> Vec<Part> {
     vec![cli, access]
 }
 
-/// The program macOS asks about: the node, which starts this extension and so agent-desktop.
-fn node_program() -> &'static str {
-    "the Pointman node (pointman-node)"
+/// The program macOS asks about: the node, which starts this extension and so agent-desktop. System Settings lists
+/// a node inside an app (Pointman.app) under the app's name, and one on its own under the file's.
+fn node_program() -> String {
+    match parent_path() {
+        Some(path) => program_named(&path),
+        None => "the Pointman node (pointman-node)".into(),
+    }
+}
+
+/// How System Settings lists the program at `path`, and where its + button finds it.
+fn program_named(path: &str) -> String {
+    let (name, at) = match path.find(".app/") {
+        Some(i) => {
+            let app = &path[..i + 4];
+            (app.rsplit('/').next().unwrap_or(app).trim_end_matches(".app"), app)
+        }
+        None => (path.rsplit('/').next().filter(|n| !n.is_empty()).unwrap_or("pointman-node"), path),
+    };
+    format!("{name} (+ adds it from {at} if it isn't listed)")
+}
+
+/// The path of the program that started this one: the node.
+#[cfg(target_os = "macos")]
+fn parent_path() -> Option<String> {
+    let mut buf = vec![0u8; 4096];
+    // SAFETY: proc_pidpath writes at most the buffer's size into it, and says how much it wrote
+    let n = unsafe { libc::proc_pidpath(libc::getppid(), buf.as_mut_ptr().cast(), buf.len() as u32) };
+    let path = std::str::from_utf8(buf.get(..usize::try_from(n).ok()?)?).ok()?;
+    (!path.is_empty()).then(|| path.to_string())
+}
+
+#[cfg(not(target_os = "macos"))]
+fn parent_path() -> Option<String> {
+    None
 }
 
 fn fix(x: &Ext, req: &HealthFixRequest) -> anyhow::Result<HealthFixResponse> {
@@ -491,5 +537,27 @@ mod tests {
             status_line("mac-m4", &v),
             "agent-desktop 1.0.2 on mac-m4 (macos): accessibility granted, screen recording denied"
         );
+    }
+
+    #[test]
+    fn macos_lists_an_apps_node_under_the_app() {
+        assert_eq!(
+            program_named("/Applications/Pointman.app/Contents/Resources/bin/pointman-node"),
+            "Pointman (+ adds it from /Applications/Pointman.app if it isn't listed)"
+        );
+        assert_eq!(
+            program_named("/Users/j/.local/bin/pointman-node"),
+            "pointman-node (+ adds it from /Users/j/.local/bin/pointman-node if it isn't listed)"
+        );
+    }
+
+    #[test]
+    fn an_overflow_file_stays_in_the_jobs_folder() {
+        assert_eq!(file_stem("snapshot"), "snapshot");
+        assert_eq!(file_stem("list-apps"), "list-apps");
+        assert_eq!(file_stem("../../.ssh/x"), "sshx");
+        assert_eq!(file_stem("/etc/passwd"), "etcpasswd");
+        assert_eq!(file_stem(""), "answer");
+        assert_eq!(file_stem("../"), "answer");
     }
 }

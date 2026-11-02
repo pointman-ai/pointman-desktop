@@ -90,56 +90,123 @@ pub fn linux_env(runtime: Option<&Path>, have: &dyn Fn(&str) -> bool, x11: &Path
         out.push(("DBUS_SESSION_BUS_ADDRESS".into(), format!("unix:path={}", rt.join("bus").display())));
     }
     if !have("WAYLAND_DISPLAY") {
-        if let Some(w) = first_named(rt, "wayland-", |n| !n.ends_with(".lock")) {
+        if let Some(w) = live_named(rt, "wayland-", |n| !n.ends_with(".lock"), Path::to_path_buf) {
             out.push(("WAYLAND_DISPLAY".into(), w));
         }
     }
     if !have("HYPRLAND_INSTANCE_SIGNATURE") {
-        if let Some(h) = first_named(&rt.join("hypr"), "", |_| true) {
+        if let Some(h) = live_named(&rt.join("hypr"), "", |_| true, |d| d.join(".socket.sock")) {
             out.push(("HYPRLAND_INSTANCE_SIGNATURE".into(), h));
         }
     }
     if !have("DISPLAY") {
-        if let Some(x) = first_named(x11, "X", |n| n[1..].chars().all(|c| c.is_ascii_digit())) {
+        if let Some(x) = live_named(x11, "X", |n| n[1..].chars().all(|c| c.is_ascii_digit()), Path::to_path_buf) {
             out.push(("DISPLAY".into(), format!(":{}", &x[1..])));
         }
     }
     out
 }
 
-/// The first entry of `dir` (by name) that starts with `prefix` and passes `ok`.
-fn first_named(dir: &Path, prefix: &str, ok: impl Fn(&str) -> bool) -> Option<String> {
-    let mut names: Vec<String> = std::fs::read_dir(dir)
+/// The entry of `dir` that starts with `prefix`, passes `ok`, and whose socket (`socket` of its path) takes a
+/// connection; the newest of them when there are several. A session that crashed leaves its files behind
+/// (`hypr/<signature>/`, `wayland-1`), so the first by name can be a dead one.
+fn live_named(
+    dir: &Path,
+    prefix: &str,
+    ok: impl Fn(&str) -> bool,
+    socket: impl Fn(&Path) -> PathBuf,
+) -> Option<String> {
+    let mut live: Vec<(std::time::SystemTime, String)> = std::fs::read_dir(dir)
         .ok()?
         .flatten()
-        .map(|e| e.file_name().to_string_lossy().to_string())
-        .filter(|n| n.starts_with(prefix) && n.len() > prefix.len() && ok(n))
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if !(name.starts_with(prefix) && name.len() > prefix.len() && ok(&name)) {
+                return None;
+            }
+            let sock = socket(&e.path());
+            if !listening(&sock) {
+                return None;
+            }
+            let at = std::fs::metadata(&sock).and_then(|m| m.modified()).unwrap_or(std::time::UNIX_EPOCH);
+            Some((at, name))
+        })
         .collect();
-    names.sort();
-    names.into_iter().next()
+    live.sort();
+    live.pop().map(|(_, name)| name)
+}
+
+/// Something is listening on this Unix socket: connecting and hanging up at once, as a client that changed its
+/// mind would. A dead session's socket refuses.
+#[cfg(unix)]
+fn listening(sock: &Path) -> bool {
+    std::os::unix::net::UnixStream::connect(sock).is_ok()
+}
+
+#[cfg(not(unix))]
+fn listening(_: &Path) -> bool {
+    false
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// A folder short enough for Unix socket paths (macOS allows 104 bytes; its temp folder is long).
+    fn short_dir() -> tempfile::TempDir {
+        tempfile::Builder::new().prefix("de").tempdir_in("/tmp").unwrap()
+    }
+
+    /// A socket that's listening, kept open by the listener it returns.
+    fn serve(path: &Path) -> std::os::unix::net::UnixListener {
+        std::os::unix::net::UnixListener::bind(path).unwrap()
+    }
+
+    /// A socket file nobody listens on: what a crashed session leaves.
+    fn dead(path: &Path) {
+        drop(std::os::unix::net::UnixListener::bind(path).unwrap());
+    }
+
     #[test]
     fn a_service_gets_the_sessions_sockets() {
-        let rt = tempfile::tempdir().unwrap();
-        let x11 = tempfile::tempdir().unwrap();
-        for f in ["bus", "wayland-1", "wayland-1.lock", "wayland-0"] {
-            std::fs::write(rt.path().join(f), "").unwrap();
-        }
+        let rt = short_dir();
+        let x11 = short_dir();
+        std::fs::write(rt.path().join("bus"), "").unwrap();
+        std::fs::write(rt.path().join("wayland-1.lock"), "").unwrap();
+        let _w = serve(&rt.path().join("wayland-1"));
         std::fs::create_dir_all(rt.path().join("hypr/abc_123")).unwrap();
-        std::fs::write(x11.path().join("X0"), "").unwrap();
+        let _h = serve(&rt.path().join("hypr/abc_123/.socket.sock"));
+        let _x = serve(&x11.path().join("X0"));
         let none = |_: &str| false;
         let env = linux_env(Some(rt.path()), &none, x11.path());
         let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
         assert_eq!(get("XDG_RUNTIME_DIR").as_deref(), rt.path().to_str());
         assert_eq!(get("DBUS_SESSION_BUS_ADDRESS"), Some(format!("unix:path={}", rt.path().join("bus").display())));
-        assert_eq!(get("WAYLAND_DISPLAY").as_deref(), Some("wayland-0"));
+        assert_eq!(get("WAYLAND_DISPLAY").as_deref(), Some("wayland-1"));
         assert_eq!(get("HYPRLAND_INSTANCE_SIGNATURE").as_deref(), Some("abc_123"));
         assert_eq!(get("DISPLAY").as_deref(), Some(":0"));
+    }
+
+    #[test]
+    fn a_crashed_sessions_leftovers_are_skipped() {
+        let rt = short_dir();
+        let x11 = short_dir();
+        dead(&rt.path().join("wayland-0"));
+        let _w = serve(&rt.path().join("wayland-1"));
+        for sig in ["aaa_old", "zzz_also_old"] {
+            std::fs::create_dir_all(rt.path().join("hypr").join(sig)).unwrap();
+            dead(&rt.path().join("hypr").join(sig).join(".socket.sock"));
+        }
+        std::fs::create_dir_all(rt.path().join("hypr/mmm_live")).unwrap();
+        let _h = serve(&rt.path().join("hypr/mmm_live/.socket.sock"));
+        std::fs::create_dir_all(rt.path().join("hypr/no_socket")).unwrap();
+        dead(&x11.path().join("X0"));
+        let none = |_: &str| false;
+        let env = linux_env(Some(rt.path()), &none, x11.path());
+        let get = |k: &str| env.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone());
+        assert_eq!(get("WAYLAND_DISPLAY").as_deref(), Some("wayland-1"), "wayland-0 is dead");
+        assert_eq!(get("HYPRLAND_INSTANCE_SIGNATURE").as_deref(), Some("mmm_live"), "the others are dead");
+        assert_eq!(get("DISPLAY"), None, "X0 is dead, and a dead display is no better than none");
     }
 
     #[test]

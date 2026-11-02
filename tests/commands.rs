@@ -104,15 +104,17 @@ fn a_call_with_its_own_scope_is_left_alone() {
 #[test]
 fn physical_input_only_where_its_allowed() {
     let fake = Fake::new();
-    let node = node(&fake, json!({"headed": false}));
-    for params in
-        [json!({"args": ["click", "@s1:e1"], "headed": true}), json!({"args": ["--headed", "click", "@s1:e1"]})]
-    {
-        let e = node.run("desktop.run", params).unwrap_err().to_string();
-        assert!(e.contains("Physical input is off on testbox"), "{e}");
+    for settings in [json!({}), json!({"headed": false})] {
+        let node = node(&fake, settings);
+        for params in
+            [json!({"args": ["click", "@s1:e1"], "headed": true}), json!({"args": ["--headed", "click", "@s1:e1"]})]
+        {
+            let e = node.run("desktop.run", params).unwrap_err().to_string();
+            assert!(e.contains("Physical input is off on testbox"), "{e}");
+        }
     }
-    assert!(fake.calls_of("click").is_empty(), "nothing ran");
-    let ok = common::node(&fake, json!({"cursor": false}));
+    assert!(fake.calls_of("click").is_empty(), "nothing ran: off unless the person turns it on");
+    let ok = common::node(&fake, json!({"cursor": false, "headed": true}));
     ok.run("desktop.run", json!({"args": ["click", "@s1:e1"], "headed": true})).unwrap();
     assert_eq!(fake.calls_of("click")[0].args, ["--headed", "click", "@s1:e1"]);
 }

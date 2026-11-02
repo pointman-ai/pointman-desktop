@@ -29,7 +29,7 @@ type = "object"
 [settings.properties.headed]
 type = "boolean"
 title = "Physical input"
-default = true
+default = false
 description = "Let agents ask for physical input (headed): it moves this machine's pointer and types into the focused window. Off: only accessibility actions, which leave the pointer and focus alone."
 
 [settings.properties.cursor]
