@@ -1,0 +1,55 @@
+# agent-desktop (github.com/vercel-labs/agent-desktop) on Pointman's machines: agents read this machine's apps
+# through the OS accessibility tree and act on them (click, type, press, scroll, launch), sent from anywhere with
+# create_job(machine=…). A pinned agent-desktop release, checked against the sha256 this extension carries, is
+# installed in the extension's state folder. Every call shares one agent-desktop session with a cursor per agent
+# (macOS), so a person watching the screen extension's live pane sees whose cursor acts, and where.
+[extension]
+id = "desktop"
+name = "Desktop"
+version = "0.1.0"
+publisher = "aurelio"
+summary = "Agents operate this machine's apps with agent-desktop: read a window's accessibility tree, then click, type and press."
+node = ">=0.4.0"
+platforms = ["macos-arm64", "macos-x86_64", "linux-x86_64", "linux-arm64"]
+
+[run]
+command = ["bin/desktop"]
+runtime = "binary"
+
+# guidance for agents on a node with it: the loop, refs, headed only when allowed, and the screen pane for people
+[behavior]
+skill = "SKILLS.md"
+
+[permissions]
+network = true                   # agent-desktop's pinned release, from its GitHub releases, once per version
+
+[settings]
+type = "object"
+
+[settings.properties.headed]
+type = "boolean"
+title = "Physical input"
+default = false
+description = "Let agents ask for physical input (headed): it moves this machine's pointer and types into the focused window. Off: only accessibility actions, which leave the pointer and focus alone."
+
+[settings.properties.cursor]
+type = "boolean"
+title = "Show each agent's cursor"
+default = true
+description = "On macOS, draw each agent's own cursor, labelled with its name, where it acts, so whoever watches this screen sees it."
+
+[[commands]]
+kind = "desktop.run"
+title = "Run agent-desktop (args, agent, doing?, headed?)"
+params = { type = "object", properties = { args = { type = "array", items = { type = "string" }, description = "The words after `agent-desktop`: [\"snapshot\", \"--app\", \"Finder\", \"-i\", \"--compact\"], then [\"click\", \"@s8f3k2p9:e8\"]" }, agent = { type = "string", description = "Your handle (patchbay): your own cursor on this screen is labelled with it" }, doing = { type = "string", description = "What you're doing, in up to 5 words, beside your cursor" }, headed = { type = "boolean", default = false, description = "Physical input: moves the pointer and types into the focused window. Only when the person allows it" }, timeout = { type = "integer", minimum = 1, maximum = 600, default = 60, description = "Seconds before it's stopped" } }, required = ["args"], additionalProperties = false }
+cancellable = true
+outputs = ["image", "document"]
+slash = "run"
+summary = "Any agent-desktop command on this machine: snapshot an app, act on a ref, press keys, launch apps"
+
+[[commands]]
+kind = "desktop.status"
+title = "agent-desktop here: version and permissions"
+params = { type = "object", properties = {}, additionalProperties = false }
+slash = "status"
+summary = "agent-desktop's version on this machine, and whether it may see and control apps"
