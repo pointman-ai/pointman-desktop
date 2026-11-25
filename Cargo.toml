@@ -1,6 +1,6 @@
 [package]
 name = "desktop"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "agent-desktop on Pointman's machines: agents read and operate this machine's apps through the accessibility tree."
 license = "MIT"

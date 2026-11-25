@@ -6,10 +6,10 @@
 [extension]
 id = "desktop"
 name = "Desktop"
-version = "0.1.0"
+version = "0.1.1"
 publisher = "aurelio"
 summary = "Agents operate this machine's apps with agent-desktop: read a window's accessibility tree, then click, type and press."
-node = ">=0.4.0"
+node = ">=0.5.0"
 platforms = ["macos-arm64", "macos-x86_64", "linux-x86_64", "linux-arm64"]
 
 [run]
