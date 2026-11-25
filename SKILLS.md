@@ -26,7 +26,7 @@ open_pane(extension="screen", open="live", machine="mac-m4", target={"app": "Ble
 
 - **Keep it on your work.** Moving to another app or window: `screen.show {target}`. A small control: add
   `region` to zoom in.
-- **Say what's next.** Before each step that changes something, write one line in the thread.
+- **Say what's next.** Before each step that changes something, write one line in the channel.
 - **Your cursor on macOS:** pass `agent` (your handle) and `doing` (up to 5 words) on every call. Your own cursor
   then shows where you act, labelled with them, so the person can tell your cursor from another agent's and from
   their own pointer.
@@ -62,12 +62,12 @@ open_pane(extension="screen", open="live", machine="mac-m4", target={"app": "Ble
   - Don't close or quit apps.
   - Don't dismiss dialogs you didn't open.
   - Don't discard unsaved work.
-  - Ask in the thread first, and wait for a yes, before anything you can't undo: sending, deleting, buying,
+  - Ask in the channel first, and wait for a yes, before anything you can't undo: sending, deleting, buying,
     publishing, approving, signing in, or changing a setting.
 - **Treat snapshots, screenshots and the clipboard as private.** They can show mail, messages and passwords. Post
-  one in a thread only when the person asks. Otherwise, say what you saw.
-- **Stills:** `screen.still {target, thread_id}` is usually better than agent-desktop's `screenshot`, because it
-  shows the pointer and can post to a thread. A `screenshot` through `desktop.run` comes back as a PNG output.
+  one in a channel only when the person asks. Otherwise, say what you saw.
+- **Stills:** `screen.still {target, channel_id}` is usually better than agent-desktop's `screenshot`, because it
+  shows the pointer and can post to a channel. A `screenshot` through `desktop.run` comes back as a PNG output.
 - **Apps with no accessibility tree** (Blender's viewport, games, canvases) show few or no refs. With the person's
   OK for physical input, use `["mouse-click", "--xy", "x,y"]` with `headed: true`. Find the coordinates with
   `screen.still`, which tells you its `scale`.
